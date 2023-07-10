@@ -11,6 +11,6 @@ public interface IEventBus
         where TH : IIntegrationEventHandler<T>;
 
     void Unsubscribe<T, TH>()
-        where TH : IIntegrationEventHandler<T>
-        where T : IntegrationEvent;
+        where T : IntegrationEvent
+        where TH : IIntegrationEventHandler<T>;
 }
