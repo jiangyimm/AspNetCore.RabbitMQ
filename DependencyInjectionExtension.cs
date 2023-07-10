@@ -8,15 +8,17 @@ namespace Jiangyi.EventBus;
 
 public static class DependencyInjectionExtension
 {
-    public static IServiceCollection AddRabbitMQ(this IServiceCollection services)
+    public static IServiceCollection AddRabbitMQ(this IServiceCollection services,
+        Action<EventBusOption> option)
     {
+        AddOption(services, option);
         services.AddSingleton<IRabbitMQPersistentConnection>(sp =>
            {
                var logger = sp.GetRequiredService<ILogger<DefaultRabbitMQPersistentConnection>>();
-
+               var config = sp.GetRequiredService<EventBusOption>();
                var factory = new ConnectionFactory
                {
-                   Uri = new Uri("amqp://guest:guest@localhost:5672/"),
+                   Uri = config.Uri,
                    DispatchConsumersAsync = true
                };
 
@@ -38,35 +40,51 @@ public static class DependencyInjectionExtension
 
                //var retryCount = eventBusSection.GetValue("RetryCount", 5);
 
-               var retryCount = 5;
+               var retryCount = config.RetryCount;
 
                return new DefaultRabbitMQPersistentConnection(factory, logger, retryCount);
            });
 
         services.AddSingleton<IEventBus, EventBusRabbitMQ>(sp =>
         {
-            //var subscriptionClientName = eventBusSection.GetRequiredValue("SubscriptionClientName");
-
-            var subscriptionClientName = "Order";
-
             var rabbitMQPersistentConnection = sp.GetRequiredService<IRabbitMQPersistentConnection>();
             var logger = sp.GetRequiredService<ILogger<EventBusRabbitMQ>>();
             var eventBusSubscriptionsManager = sp.GetRequiredService<IEventBusSubscriptionsManager>();
-            //var retryCount = eventBusSection.GetValue("RetryCount", 5);
 
-            var retryCount = 5;
+            var config = sp.GetRequiredService<EventBusOption>();
+            var subscriptionClientName = config.SubscriptionClientName;
+            var retryCount = config.RetryCount;
 
             return new EventBusRabbitMQ(rabbitMQPersistentConnection, logger, sp, eventBusSubscriptionsManager, subscriptionClientName, retryCount);
         });
 
         services.AddSingleton<IEventBusSubscriptionsManager, InMemoryEventBusSubscriptionsManager>();
 
-
-        // services.AddTransient<OrderIntegrationEventHandler1>();
-        // services.AddTransient<OrderIntegrationEventHandler2>();
-
-
-
         return services;
+    }
+
+    private static void AddOption(this IServiceCollection serviceCollection, Action<EventBusOption> option)
+    {
+        if (option == null)
+            throw new ArgumentNullException(nameof(option));
+        if (serviceCollection == null)
+            throw new ArgumentNullException(nameof(serviceCollection));
+        var serviceDescriptor = serviceCollection.LastOrDefault(x =>
+        {
+            if (x.ServiceType == typeof(EventBusOption))
+                return x.ImplementationInstance != null;
+            return false;
+        });
+        var implementationInstance = (EventBusOption)serviceDescriptor?.ImplementationInstance ?? new EventBusOption();
+        option(implementationInstance);
+        if (serviceDescriptor == null)
+            serviceCollection.AddSingleton(implementationInstance);
+    }
+
+    public class EventBusOption
+    {
+        public Uri Uri { get; set; }
+        public string SubscriptionClientName { get; set; }
+        public int RetryCount { get; set; }
     }
 }
